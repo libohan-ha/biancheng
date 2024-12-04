@@ -5,6 +5,8 @@ import openai
 from dotenv import load_dotenv
 import traceback
 import logging
+import time
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -28,6 +30,24 @@ except Exception as e:
     logging.error(f"Error initializing OpenAI client: {str(e)}")
     raise
 
+def retry_with_backoff(max_retries=3, initial_delay=1):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for retry in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if "rate limit exceeded" not in str(e).lower() or retry == max_retries - 1:
+                        raise
+                    logging.warning(f"Rate limit exceeded, retrying in {delay} seconds...")
+                    time.sleep(delay)
+                    delay *= 2
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 @app.route('/')
 def home():
     return app.send_static_file('index.html')
@@ -43,23 +63,25 @@ def chat():
         if not os.environ.get("SAMBANOVA_API_KEY"):
             raise ValueError("API key not found in environment variables")
         
-        response = openai.ChatCompletion.create(
-            model='Llama-3.2-90B-Vision-Instruct',
-            messages=[
-                {"role": "system", "content": """你是一位善于循序渐进、互动教学的编程导师。
-                请按照以下格式回复：
-                1. 概念解释（简明易懂，100字以内）
-                2. 示例学习（提供3个由浅入深的示例）
-                3. 完型填空（提供3个由浅入深的代码填空题，每个题目都应该包含多个需要填写的关键点，用 _____ 表示。）
-                4. 实战练习（提供具体题目和提示）
-                5. 实战答案（提供实战练习的参考答案和详细解释）"""},
-                {"role": "user", "content": user_message}
-            ],
-            temperature=0.1,
-            top_p=0.1
-        )
+        @retry_with_backoff(max_retries=3, initial_delay=1)
+        def make_api_call():
+            return openai.ChatCompletion.create(
+                model='Llama-3.2-90B-Vision-Instruct',
+                messages=[
+                    {"role": "system", "content": """你是一位善于循序渐进、互动教学的编程导师。
+                    请按照以下格式回复：
+                    1. 概念解释（简明易懂，100字以内）
+                    2. 示例学习（提供3个由浅入深的示例）
+                    3. 完型填空（提供3个由浅入深的代码填空题，每个题目都应该包含多个需要填写的关键点，用 _____ 表示。）
+                    4. 实战练习（提供具体题目和提示）
+                    5. 实战答案（提供实战练习的参考答案和详细解释）"""},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=0.1,
+                top_p=0.1
+            )
         
-        # 使用字典获取避免递归错误
+        response = make_api_call()
         response_data = response.get('choices', [{}])[0].get('message', {}).get('content', '')
         logging.debug("Response generated successfully")
         
@@ -70,7 +92,9 @@ def chat():
         error_message = str(e)
         logging.error(f"Error occurred: {error_message}")
         
-        if "API key" in error_message.lower():
+        if "rate limit exceeded" in error_message.lower():
+            error_message = "服务器繁忙，请稍后再试"
+        elif "API key" in error_message.lower():
             error_message = "API key configuration error. Please check your environment variables."
         
         return jsonify({
