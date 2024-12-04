@@ -65,7 +65,7 @@ def chat():
         
         @retry_with_backoff(max_retries=3, initial_delay=1)
         def make_api_call():
-            return openai.ChatCompletion.create(
+            response = openai.ChatCompletion.create(
                 model='Llama-3.2-90B-Vision-Instruct',
                 messages=[
                     {"role": "system", "content": """你是一位善于循序渐进、互动教学的编程导师。
@@ -80,13 +80,22 @@ def chat():
                 temperature=0.1,
                 top_p=0.1
             )
+            # 直接提取需要的数据，避免递归序列化
+            if isinstance(response, dict):
+                choices = response.get('choices', [])
+                if choices and isinstance(choices[0], dict):
+                    message = choices[0].get('message', {})
+                    if isinstance(message, dict):
+                        return message.get('content', '')
+            return ''
         
-        response = make_api_call()
-        response_data = response.get('choices', [{}])[0].get('message', {}).get('content', '')
+        response_text = make_api_call()
+        if not response_text:
+            raise ValueError("Invalid response format from API")
+            
         logging.debug("Response generated successfully")
-        
         return jsonify({
-            "response": response_data
+            "response": response_text
         })
     except Exception as e:
         error_message = str(e)
