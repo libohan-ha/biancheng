@@ -21,11 +21,8 @@ CORS(app)
 
 # Initialize OpenAI client
 try:
-    client = openai.OpenAI(
-        api_key=os.environ.get("SAMBANOVA_API_KEY"),
-        base_url="https://api.sambanova.ai/v1"
-    )
-    # Test the client configuration
+    openai.api_key = os.environ.get("SAMBANOVA_API_KEY")
+    openai.api_base = "https://api.sambanova.ai/v1"
     logging.debug("OpenAI client initialized successfully")
 except Exception as e:
     logging.error(f"Error initializing OpenAI client: {str(e)}")
@@ -46,7 +43,7 @@ def chat():
         if not os.environ.get("SAMBANOVA_API_KEY"):
             raise ValueError("API key not found in environment variables")
         
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model='Llama-3.2-90B-Vision-Instruct',
             messages=[
                 {"role": "system", "content": """你是一位善于循序渐进、互动教学的编程导师。
