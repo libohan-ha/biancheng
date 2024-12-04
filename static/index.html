@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:5000">
+    <title>AI编程学习助手</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" rel="stylesheet" />
+    <style>
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background-color: #f3f4f6;
+            border-radius: 2px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-bar-inner {
+            width: 0%;
+            height: 100%;
+            background-color: #3b82f6;
+            border-radius: 2px;
+            animation: progress 2s infinite ease-in-out;
+        }
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8">AI编程学习助手</h1>
+        
+        <div class="max-w-3xl mx-auto bg-white rounded-lg shadow-lg p-6">
+            <div id="chat-container" class="h-96 overflow-y-auto mb-4 p-4 border rounded">
+                <div class="welcome-message">
+                    <p class="text-gray-700">👋 你好！我是你的AI编程导师。</p>
+                    <p class="text-gray-700">我可以帮你：</p>
+                    <ul class="list-disc ml-6 text-gray-700">
+                        <li>解释编程概念</li>
+                        <li>提供代码示例</li>
+                        <li>设计编程练习</li>
+                        <li>解答编程问题</li>
+                    </ul>
+                    <p class="text-gray-700 mt-2">请告诉我你想学习什么？</p>
+                </div>
+            </div>
+            
+            <div class="progress-bar mb-4" id="progress-bar">
+                <div class="progress-bar-inner"></div>
+            </div>
+            
+            <div class="flex space-x-4">
+                <input type="text" id="user-input" 
+                    class="flex-1 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder="输入你的问题...">
+                <button id="send-btn" 
+                    class="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    发送
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 先加载外部依赖 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-java.min.js"></script>
+
+    <script>
+        // 确保 marked 已正确加载
+        if (typeof marked === 'undefined') {
+            console.error('Marked library not loaded');
+        } else {
+            console.log('Marked library loaded successfully');
+        }
+
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const progressBar = document.getElementById('progress-bar');
+
+        function appendMessage(content, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `my-4 ${isUser ? 'text-right' : ''}`;
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `inline-block p-3 rounded-lg ${
+                isUser ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800'
+            }`;
+            
+            if (isUser) {
+                messageBubble.textContent = content;
+            } else {
+                try {
+                    // 使用 marked.parse 而不是直接调用 marked
+                    messageBubble.innerHTML = marked.parse(content);
+                    Prism.highlightAllUnder(messageBubble);
+                } catch (e) {
+                    console.error('Error parsing markdown:', e);
+                    messageBubble.textContent = content;
+                }
+            }
+            
+            messageDiv.appendChild(messageBubble);
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            appendMessage(message, true);
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            progressBar.style.display = 'block';
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Server error');
+                }
+
+                const data = await response.json();
+                appendMessage(data.response, false);
+            } catch (error) {
+                console.error('Error details:', error);
+                appendMessage(`错误: ${error.message}`, false);
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                progressBar.style.display = 'none';
+                userInput.focus();
+            }
+        }
+
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
