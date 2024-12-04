@@ -131,15 +131,29 @@
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Server error');
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("application/json")) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Server error');
+                    } else {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                }
+
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Server returned non-JSON response");
                 }
 
                 const data = await response.json();
+                if (!data.response) {
+                    throw new Error("Invalid response format");
+                }
+                
                 appendMessage(data.response, false);
             } catch (error) {
                 console.error('Error details:', error);
-                appendMessage(`错误: ${error.message}`, false);
+                appendMessage(`错误: ${error.message}. 请稍后重试。`, false);
             } finally {
                 userInput.disabled = false;
                 sendBtn.disabled = false;
